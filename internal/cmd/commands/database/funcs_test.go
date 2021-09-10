@@ -53,13 +53,11 @@ func TestMigrateDatabase(t *testing.T) {
 				require.NoError(t, err)
 
 				earlyMigrationVersion := 2000
-				oState := schema.TestCloneMigrationStates(t)
-				nState := schema.TestCreatePartialMigrationState(oState["postgres"], earlyMigrationVersion)
-				oState["postgres"] = nState
-
-				man, err := schema.NewManager(ctx, dialect, dBase, schema.WithMigrationStates(oState))
+				man, err := schema.NewManager(ctx, dialect, dBase, schema.WithEditions(
+					schema.TestCreatePartialEditions(schema.Dialect(dialect), schema.PartialEditions{"oss": earlyMigrationVersion}),
+				))
 				require.NoError(t, err)
-				require.NoError(t, man.RollForward(ctx))
+				require.NoError(t, man.ApplyMigrations(ctx))
 				return u
 			},
 			expectedCode:   0,
@@ -79,13 +77,11 @@ func TestMigrateDatabase(t *testing.T) {
 				require.NoError(t, err)
 
 				earlyMigrationVersion := 2000
-				oState := schema.TestCloneMigrationStates(t)
-				nState := schema.TestCreatePartialMigrationState(oState["postgres"], earlyMigrationVersion)
-				oState["postgres"] = nState
-
-				man, err := schema.NewManager(ctx, dialect, dBase, schema.WithMigrationStates(oState))
+				man, err := schema.NewManager(ctx, dialect, dBase, schema.WithEditions(
+					schema.TestCreatePartialEditions(schema.Dialect(dialect), schema.PartialEditions{"oss": earlyMigrationVersion}),
+				))
 				require.NoError(t, err)
-				require.NoError(t, man.RollForward(ctx))
+				require.NoError(t, man.ApplyMigrations(ctx))
 				return u
 			},
 			expectedCode:   -1,
@@ -222,7 +218,7 @@ func TestVerifyOplogIsEmpty(t *testing.T) {
 
 	man, err := schema.NewManager(ctx, dialect, dBase)
 	require.NoError(t, err)
-	require.NoError(t, man.RollForward(ctx))
+	require.NoError(t, man.ApplyMigrations(ctx))
 
 	cmd := InitCommand{Command: base.NewCommand(cli.NewMockUi())}
 	cmd.srv = base.NewServer(&base.Command{UI: cmd.UI})
