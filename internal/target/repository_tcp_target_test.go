@@ -168,10 +168,13 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 			name: "empty-scope-id",
 			args: args{
 				target: func() *target.TcpTarget {
-					target := target.AllocTcpTarget()
-					target.Name = "empty-scope-id"
+					tar, err := target.NewTcpTarget(
+						proj.PublicId,
+						target.WithName("empty-scope-id"),
+					)
 					require.NoError(t, err)
-					return &target
+					tar.ScopeId = ""
+					return tar
 				}(),
 			},
 			wantErr:     true,
@@ -452,17 +455,18 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 				name = target.TestId(t)
 			}
 			tar := target.TestTcpTarget(t, conn, tt.newScopeId, name, tt.newTargetOpts...)
-			updateTarget := target.AllocTcpTarget()
+			updateTarget := target.NewTestTcpTarget(
+				tt.args.ScopeId,
+				target.WithName(tt.args.name),
+				target.WithDescription(tt.args.description),
+				target.WithDefaultPort(tt.args.port),
+			)
 			updateTarget.PublicId = tar.PublicId
 			if tt.args.PublicId != nil {
 				updateTarget.PublicId = *tt.args.PublicId
 			}
-			updateTarget.ScopeId = tt.args.ScopeId
-			updateTarget.Name = tt.args.name
-			updateTarget.Description = tt.args.description
-			updateTarget.DefaultPort = tt.args.port
 
-			targetAfterUpdate, hostSources, credSources, updatedRows, err := repo.UpdateTcpTarget(context.Background(), &updateTarget, tar.Version, tt.args.fieldMaskPaths, tt.args.opt...)
+			targetAfterUpdate, hostSources, credSources, updatedRows, err := repo.UpdateTcpTarget(context.Background(), updateTarget, tar.Version, tt.args.fieldMaskPaths, tt.args.opt...)
 			if tt.wantErr {
 				assert.Error(err)
 				assert.True(errors.Match(errors.T(tt.wantIsError), err))

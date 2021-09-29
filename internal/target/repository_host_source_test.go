@@ -91,7 +91,7 @@ func TestRepository_AddTargetHostSets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert, require := assert.New(t), require.New(t)
 			require.NoError(conn.Where("1=1").Delete(target.AllocTargetHostSet()).Error)
-			require.NoError(conn.Where("1=1").Delete(target.AllocTcpTarget()).Error)
+			require.NoError(conn.Where("1=1").Delete(target.NewTestTcpTarget("")).Error)
 
 			projTarget := target.TestTcpTarget(t, conn, staticProj.PublicId, "static-proj")
 

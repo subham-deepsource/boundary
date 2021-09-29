@@ -295,7 +295,7 @@ func TestRepository_ListTargets(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert, require := assert.New(t), require.New(t)
-			require.NoError(conn.Where("1=1").Delete(target.AllocTcpTarget()).Error)
+			require.NoError(conn.Where("1=1").Delete(target.NewTestTcpTarget("")).Error)
 			testGroups := []*target.TcpTarget{}
 			for i := 0; i < tt.createCnt; i++ {
 				switch {
@@ -329,7 +329,7 @@ func TestRepository_ListRoles_Multiple_Scopes(t *testing.T) {
 	repo, err := target.NewRepository(rw, rw, testKms)
 	require.NoError(t, err)
 
-	require.NoError(t, conn.Where("1=1").Delete(target.AllocTcpTarget()).Error)
+	require.NoError(t, conn.Where("1=1").Delete(target.NewTestTcpTarget("")).Error)
 
 	const numPerScope = 10
 	var total int
@@ -379,8 +379,8 @@ func TestRepository_DeleteTarget(t *testing.T) {
 			name: "no-public-id",
 			args: args{
 				target: func() target.Target {
-					target := target.AllocTcpTarget()
-					return &target
+					tar, _ := target.NewTcpTarget(proj.PublicId)
+					return tar
 				}(),
 			},
 			wantRowsDeleted: 0,
@@ -393,9 +393,9 @@ func TestRepository_DeleteTarget(t *testing.T) {
 				target: func() target.Target {
 					id, err := target.NewTcpTargetId()
 					require.NoError(t, err)
-					target := target.AllocTcpTarget()
-					target.PublicId = id
-					return &target
+					tar, _ := target.NewTcpTarget(proj.PublicId)
+					tar.PublicId = id
+					return tar
 				}(),
 			},
 			wantRowsDeleted: 0,
