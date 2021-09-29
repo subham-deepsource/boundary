@@ -1,4 +1,4 @@
-package target
+package target_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/boundary/internal/db"
 	"github.com/hashicorp/boundary/internal/host/static"
 	"github.com/hashicorp/boundary/internal/iam"
+	"github.com/hashicorp/boundary/internal/target"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,14 +24,14 @@ func Test_TestTcpTarget(t *testing.T) {
 	for _, s := range hsets {
 		sets = append(sets, s.PublicId)
 	}
-	name := testTargetName(t, proj.PublicId)
-	target := TestTcpTarget(t, conn, proj.PublicId, name, WithHostSources(sets))
+	name := target.TestTargetName(t, proj.PublicId)
+	tar := target.TestTcpTarget(t, conn, proj.PublicId, name, target.WithHostSources(sets))
 	require.NotNil(t)
-	require.NotEmpty(target.PublicId)
-	require.Equal(name, target.Name)
+	require.NotEmpty(tar.PublicId)
+	require.Equal(name, tar.Name)
 
 	rw := db.New(conn)
-	foundSources, err := fetchHostSources(context.Background(), rw, target.PublicId)
+	foundSources, err := target.FetchHostSources(context.Background(), rw, tar.PublicId)
 	require.NoError(err)
 	foundIds := make([]string, 0, len(foundSources))
 	for _, s := range foundSources {
@@ -45,14 +46,14 @@ func Test_TestCredentialLibrary(t *testing.T) {
 	wrapper := db.TestWrapper(t)
 	_, proj := iam.TestScopes(t, iam.TestRepo(t, conn, wrapper))
 
-	target := TestTcpTarget(t, conn, proj.PublicId, t.Name())
+	tar := target.TestTcpTarget(t, conn, proj.PublicId, t.Name())
 	store := vault.TestCredentialStores(t, conn, wrapper, proj.GetPublicId(), 1)[0]
 	vlibs := vault.TestCredentialLibraries(t, conn, wrapper, store.GetPublicId(), 2)
 	var libIds []string
-	var libs []*CredentialLibrary
+	var libs []*target.CredentialLibrary
 	for _, v := range vlibs {
 		libIds = append(libIds, v.GetPublicId())
-		lib := TestCredentialLibrary(t, conn, target.GetPublicId(), v.GetPublicId())
+		lib := target.TestCredentialLibrary(t, conn, tar.GetPublicId(), v.GetPublicId())
 		require.NotNil(lib)
 		libs = append(libs, lib)
 	}
@@ -60,7 +61,7 @@ func Test_TestCredentialLibrary(t *testing.T) {
 	assert.Len(libs, 2)
 
 	rw := db.New(conn)
-	foundSources, err := fetchCredentialSources(context.Background(), rw, target.PublicId)
+	foundSources, err := target.FetchCredentialSources(context.Background(), rw, tar.PublicId)
 	require.NoError(err)
 	foundIds := make([]string, 0, len(foundSources))
 	for _, s := range foundSources {
