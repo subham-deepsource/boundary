@@ -39,25 +39,25 @@ func NewRepository(r db.Reader, w db.Writer, kms *kms.Kms, opt ...Option) (*Repo
 	if kms == nil {
 		return nil, errors.NewDeprecated(errors.InvalidParameter, op, "nil kms")
 	}
-	opts := getOpts(opt...)
-	if opts.withLimit == 0 {
+	opts := GetOpts(opt...)
+	if opts.WithLimit == 0 {
 		// zero signals the boundary defaults should be used.
-		opts.withLimit = db.DefaultLimit
+		opts.WithLimit = db.DefaultLimit
 	}
 	return &Repository{
 		reader:       r,
 		writer:       w,
 		kms:          kms,
-		defaultLimit: opts.withLimit,
+		defaultLimit: opts.WithLimit,
 	}, nil
 }
 
 // LookupTarget will look up a target in the repository and return the target
-// with its host source ids and credential source ids.  If the target is not
+// With its host source ids and credential source ids.  If the target is not
 // found, it will return nil, nil, nil, nil. No options are currently supported.
 func (r *Repository) LookupTarget(ctx context.Context, publicIdOrName string, opt ...Option) (Target, []HostSource, []CredentialSource, error) {
 	const op = "target.(Repository).LookupTarget"
-	opts := getOpts(opt...)
+	opts := GetOpts(opt...)
 
 	if publicIdOrName == "" {
 		return nil, nil, nil, errors.New(ctx, errors.InvalidParameter, op, "missing public id")
@@ -65,23 +65,23 @@ func (r *Repository) LookupTarget(ctx context.Context, publicIdOrName string, op
 
 	var where []string
 	var whereArgs []interface{}
-	nameEmpty := opts.withName == ""
-	scopeIdEmpty := opts.withScopeId == ""
-	scopeNameEmpty := opts.withScopeName == ""
+	nameEmpty := opts.WithName == ""
+	scopeIdEmpty := opts.WithScopeId == ""
+	scopeNameEmpty := opts.WithScopeName == ""
 	if !nameEmpty {
-		if opts.withName != publicIdOrName {
+		if opts.WithName != publicIdOrName {
 			return nil, nil, nil, errors.New(ctx, errors.InvalidParameter, op, "name passed in but does not match publicId")
 		}
-		where, whereArgs = append(where, "lower(name) = lower(?)"), append(whereArgs, opts.withName)
+		where, whereArgs = append(where, "lower(name) = lower(?)"), append(whereArgs, opts.WithName)
 		switch {
 		case scopeIdEmpty && scopeNameEmpty:
 			return nil, nil, nil, errors.New(ctx, errors.InvalidParameter, op, "using name but both scope ID and scope name are empty")
 		case !scopeIdEmpty && !scopeNameEmpty:
 			return nil, nil, nil, errors.New(ctx, errors.InvalidParameter, op, "using name but both scope ID and scope name are set")
 		case !scopeIdEmpty:
-			where, whereArgs = append(where, "scope_id = ?"), append(whereArgs, opts.withScopeId)
+			where, whereArgs = append(where, "scope_id = ?"), append(whereArgs, opts.WithScopeId)
 		case !scopeNameEmpty:
-			where, whereArgs = append(where, "scope_id = (select public_id from iam_scope where lower(name) = lower(?))"), append(whereArgs, opts.withScopeName)
+			where, whereArgs = append(where, "scope_id = (select public_id from iam_scope where lower(name) = lower(?))"), append(whereArgs, opts.WithScopeName)
 		default:
 			return nil, nil, nil, errors.New(ctx, errors.InvalidParameter, op, "unknown combination of parameters")
 		}
@@ -140,18 +140,18 @@ func (r *Repository) LookupTarget(ctx context.Context, publicIdOrName string, op
 // ListTargets in targets in a scope.  Supports the WithScopeId, WithLimit, WithTargetType options.
 func (r *Repository) ListTargets(ctx context.Context, opt ...Option) ([]Target, error) {
 	const op = "target.(Repository).ListTargets"
-	opts := getOpts(opt...)
-	if len(opts.withScopeIds) == 0 && opts.withUserId == "" {
+	opts := GetOpts(opt...)
+	if len(opts.WithScopeIds) == 0 && opts.WithUserId == "" {
 		return nil, errors.New(ctx, errors.InvalidParameter, op, "must specify either scope id or user id")
 	}
 	// TODO (jimlambrt 8/2020) - implement WithUserId() optional filtering.
 	var where []string
 	var args []interface{}
-	if len(opts.withScopeIds) != 0 {
-		where, args = append(where, "scope_id in (?)"), append(args, opts.withScopeIds)
+	if len(opts.WithScopeIds) != 0 {
+		where, args = append(where, "scope_id in (?)"), append(args, opts.WithScopeIds)
 	}
-	if opts.withTargetType != nil {
-		where, args = append(where, "type = ?"), append(args, opts.withTargetType.String())
+	if opts.WithTargetType != nil {
+		where, args = append(where, "type = ?"), append(args, opts.WithTargetType.String())
 	}
 
 	var foundTargets []*targetView
@@ -176,12 +176,12 @@ func (r *Repository) ListTargets(ctx context.Context, opt ...Option) ([]Target, 
 // repo defaultLimit
 func (r *Repository) list(ctx context.Context, resources interface{}, where string, args []interface{}, opt ...Option) error {
 	const op = "target.(Repository).list"
-	opts := getOpts(opt...)
+	opts := GetOpts(opt...)
 	limit := r.defaultLimit
 	var dbOpts []db.Option
-	if opts.withLimit != 0 {
+	if opts.WithLimit != 0 {
 		// non-zero signals an override of the default limit for the repo.
-		limit = opts.withLimit
+		limit = opts.WithLimit
 	}
 	dbOpts = append(dbOpts, db.WithLimit(limit))
 	if err := r.reader.SearchWhere(ctx, resources, where, args, dbOpts...); err != nil {
@@ -203,15 +203,12 @@ func (r *Repository) DeleteTarget(ctx context.Context, publicId string, _ ...Opt
 	}
 	var metadata oplog.Metadata
 	var deleteTarget interface{}
-	switch t.Type {
-	case TcpTargetType.String():
-		tcpT := allocTcpTarget()
-		tcpT.PublicId = publicId
-		deleteTarget = &tcpT
-		metadata = tcpT.oplog(oplog.OpType_OP_TYPE_DELETE)
-	default:
+	rh, ok := subtypes[t.Type]
+	if !ok {
 		return db.NoRowsAffected, errors.New(ctx, errors.InvalidParameter, op, fmt.Sprintf("%s is an unsupported target type %s", publicId, t.Type))
 	}
+
+	deleteTarget, metadata = rh.Alloc(publicId, t.Version, oplog.OpType_OP_TYPE_DELETE)
 
 	oplogWrapper, err := r.kms.GetWrapper(ctx, t.ScopeId, kms.KeyPurposeOplog)
 	if err != nil {
@@ -247,7 +244,7 @@ func (r *Repository) DeleteTarget(ctx context.Context, publicId string, _ ...Opt
 	return rowsDeleted, nil
 }
 
-// update a target in the db repository with an oplog entry.
+// update a target in the db repository With an oplog entry.
 // It currently supports no options.
 func (r *Repository) update(ctx context.Context, target Target, version uint32, fieldMaskPaths []string, setToNullPaths []string, _ ...Option) (Target, []HostSource, []CredentialSource, int, error) {
 	const op = "target.(Repository).update"
@@ -277,7 +274,7 @@ func (r *Repository) update(ctx context.Context, target Target, version uint32, 
 	if err != nil {
 		return nil, nil, nil, db.NoRowsAffected, errors.Wrap(ctx, err, op, errors.WithMsg("unable to get oplog wrapper"))
 	}
-	metadata := target.oplog(oplog.OpType_OP_TYPE_UPDATE)
+	metadata := target.Oplog(oplog.OpType_OP_TYPE_UPDATE)
 	dbOpts = append(dbOpts, db.WithOplog(oplogWrapper, metadata))
 
 	var rowsUpdated int

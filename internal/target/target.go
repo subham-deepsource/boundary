@@ -1,6 +1,7 @@
 package target
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp/boundary/internal/db/timestamp"
@@ -23,7 +24,18 @@ type Target interface {
 	GetSessionMaxSeconds() uint32
 	GetSessionConnectionLimit() int32
 	GetWorkerFilter() string
-	oplog(op oplog.OpType) oplog.Metadata
+	Clone() Target
+	SetPublicId(context.Context, string) error
+	SetScopeId(string)
+	SetName(string)
+	SetDescription(string)
+	SetDefaultPort(uint32)
+	SetCreateTime(*timestamp.Timestamp)
+	SetUpdateTime(*timestamp.Timestamp)
+	SetSessionMaxSeconds(uint32)
+	SetSessionConnectionLimit(int32)
+	SetWorkerFilter(string)
+	Oplog(op oplog.OpType) oplog.Metadata
 }
 
 // TargetType defines the possible types for targets.
@@ -82,21 +94,21 @@ func (t *targetView) SetTableName(n string) {
 // targetSubtype converts the target view to the concrete subtype
 func (t *targetView) targetSubtype() (Target, error) {
 	const op = "target.targetView.targetSubtype"
-	switch t.Type {
-	case TcpTargetType.String():
-		tcpTarget := allocTcpTarget()
-		tcpTarget.PublicId = t.PublicId
-		tcpTarget.ScopeId = t.ScopeId
-		tcpTarget.Name = t.Name
-		tcpTarget.Description = t.Description
-		tcpTarget.DefaultPort = t.DefaultPort
-		tcpTarget.CreateTime = t.CreateTime
-		tcpTarget.UpdateTime = t.UpdateTime
-		tcpTarget.Version = t.Version
-		tcpTarget.SessionMaxSeconds = t.SessionMaxSeconds
-		tcpTarget.SessionConnectionLimit = t.SessionConnectionLimit
-		tcpTarget.WorkerFilter = t.WorkerFilter
-		return &tcpTarget, nil
+
+	rh, ok := subtypes[t.Type]
+	if !ok {
+		return nil, errors.NewDeprecated(errors.InvalidParameter, op, fmt.Sprintf("%s is an unknown target subtype of %s", t.PublicId, t.Type))
 	}
-	return nil, errors.NewDeprecated(errors.InvalidParameter, op, fmt.Sprintf("%s is an unknown target subtype of %s", t.PublicId, t.Type))
+
+	tt, _ := rh.Alloc(t.PublicId, t.Version, oplog.OpType_OP_TYPE_UNSPECIFIED)
+	tt.SetScopeId(t.ScopeId)
+	tt.SetName(t.Name)
+	tt.SetDescription(t.Description)
+	tt.SetDefaultPort(t.DefaultPort)
+	tt.SetCreateTime(t.CreateTime)
+	tt.SetUpdateTime(t.UpdateTime)
+	tt.SetSessionMaxSeconds(t.SessionMaxSeconds)
+	tt.SetSessionConnectionLimit(t.SessionConnectionLimit)
+	tt.SetWorkerFilter(t.WorkerFilter)
+	return tt, nil
 }
