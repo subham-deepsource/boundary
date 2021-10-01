@@ -29,7 +29,8 @@ import (
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers"
 	"github.com/hashicorp/boundary/internal/session"
 	"github.com/hashicorp/boundary/internal/target"
-	"github.com/hashicorp/boundary/internal/target/store"
+	"github.com/hashicorp/boundary/internal/target/tcp"
+	tcpStore "github.com/hashicorp/boundary/internal/target/tcp/store"
 	"github.com/hashicorp/boundary/internal/types/action"
 	"github.com/hashicorp/boundary/internal/types/resource"
 	"github.com/hashicorp/boundary/internal/types/scope"
@@ -77,7 +78,10 @@ var (
 
 func init() {
 	var err error
-	if maskManager, err = handlers.NewMaskManager(handlers.MaskDestination{&store.TcpTarget{}}, handlers.MaskSource{&pb.Target{}, &pb.TcpTargetAttributes{}}); err != nil {
+	if maskManager, err = handlers.NewMaskManager(
+		handlers.MaskDestination{&tcpStore.Target{}},
+		handlers.MaskSource{&pb.Target{}, &pb.TcpTargetAttributes{}},
+	); err != nil {
 		panic(err)
 	}
 }
@@ -1188,7 +1192,7 @@ func (s Service) createInRepo(ctx context.Context, item *pb.Target) (target.Targ
 	if tcpAttrs.GetDefaultPort().GetValue() != 0 {
 		opts = append(opts, target.WithDefaultPort(tcpAttrs.GetDefaultPort().GetValue()))
 	}
-	u, err := target.NewTcpTarget(item.GetScopeId(), opts...)
+	u, err := tcp.NewTarget(item.GetScopeId(), opts...)
 	if err != nil {
 		return nil, nil, nil, handlers.ApiErrorWithCodeAndMessage(codes.Internal, "Unable to build target for creation: %v.", err)
 	}
@@ -1196,7 +1200,7 @@ func (s Service) createInRepo(ctx context.Context, item *pb.Target) (target.Targ
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	out, hs, cl, err := repo.CreateTcpTarget(ctx, u)
+	out, hs, cl, err := repo.CreateTarget(ctx, u)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(ctx, err, op, errors.WithMsg("unable to create target"))
 	}
@@ -1232,7 +1236,7 @@ func (s Service) updateInRepo(ctx context.Context, scopeId, id string, mask []st
 		opts = append(opts, target.WithDefaultPort(tcpAttrs.GetDefaultPort().GetValue()))
 	}
 	version := item.GetVersion()
-	u, err := target.NewTcpTarget(scopeId, opts...)
+	u, err := tcp.NewTarget(scopeId, opts...)
 	if err != nil {
 		return nil, nil, nil, handlers.ApiErrorWithCodeAndMessage(codes.Internal, "Unable to build target for update: %v.", err)
 	}
@@ -1245,7 +1249,7 @@ func (s Service) updateInRepo(ctx context.Context, scopeId, id string, mask []st
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	out, hs, cl, rowsUpdated, err := repo.UpdateTcpTarget(ctx, u, version, dbMask)
+	out, hs, cl, rowsUpdated, err := repo.UpdateTarget(ctx, u, version, dbMask)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(ctx, err, op, errors.WithMsg("unable to update target"))
 	}
