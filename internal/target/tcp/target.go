@@ -113,14 +113,14 @@ func (t *Target) Oplog(op oplog.OpType) oplog.Metadata {
 	return metadata
 }
 
-func (t Target) GetType() string {
+func (t *Target) GetType() string {
 	return typeName
 }
 
 func (t *Target) SetPublicId(ctx context.Context, publicId string) error {
 	const op = "tcp.(Target).SetPublicId"
-	if !strings.HasPrefix(publicId, targetPrefix+"_") {
-		return errors.New(ctx, errors.InvalidParameter, op, fmt.Sprintf("passed-in public ID %q has wrong prefix, should be %q", publicId, targetPrefix))
+	if !strings.HasPrefix(publicId, TargetPrefix+"_") {
+		return errors.New(ctx, errors.InvalidParameter, op, fmt.Sprintf("passed-in public ID %q has wrong prefix, should be %q", publicId, TargetPrefix))
 	}
 
 	t.PublicId = publicId

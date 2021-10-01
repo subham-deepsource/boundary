@@ -1,4 +1,4 @@
-package target_test
+package tcp_test
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/boundary/internal/kms"
 	"github.com/hashicorp/boundary/internal/oplog"
 	"github.com/hashicorp/boundary/internal/target"
+	"github.com/hashicorp/boundary/internal/target/tcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -104,7 +105,7 @@ func TestRepository_AddTargetCredentialSources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert, require := assert.New(t), require.New(t)
 
-			projTarget := target.TestTcpTarget(t, conn, staticProj.PublicId, tt.name)
+			projTarget := tcp.TestTarget(t, conn, staticProj.PublicId, tt.name)
 			gotTarget, _, gotCredSources, err := repo.AddTargetCredentialSources(context.Background(), projTarget.PublicId, tt.args.targetVersion, tt.args.credLibIds)
 			if tt.wantErr {
 				require.Error(err)
@@ -125,26 +126,22 @@ func TestRepository_AddTargetCredentialSources(t *testing.T) {
 			err = db.TestVerifyOplog(t, rw, projTarget.PublicId, db.WithOperation(oplog.OpType_OP_TYPE_UPDATE), db.WithCreateNotBefore(10*time.Second))
 			assert.NoError(err)
 
-			foundCredSources, err := target.FetchCredentialSources(context.Background(), rw, projTarget.PublicId)
-			require.NoError(err)
-			assert.Len(foundCredSources, len(gotCredSourcesMap))
-			for _, s := range foundCredSources {
-				assert.NotEmpty(gotCredSourcesMap[s.Id()])
-				assert.Equal(projTarget.PublicId, s.TargetId())
-			}
-
 			tar, _, lookupCredSources, err := repo.LookupTarget(context.Background(), projTarget.PublicId)
 			require.NoError(err)
 			assert.Equal(tt.args.targetVersion+1, tar.GetVersion())
 			assert.Equal(projTarget.GetVersion(), tar.GetVersion()-1)
-			assert.True(proto.Equal(gotTarget.(*target.TcpTarget), tar.(*target.TcpTarget)))
+			assert.True(proto.Equal(gotTarget.(*tcp.Target), tar.(*tcp.Target)))
 			assert.Equal(gotCredSources, lookupCredSources)
+			for _, s := range lookupCredSources {
+				assert.NotEmpty(gotCredSourcesMap[s.Id()])
+				assert.Equal(projTarget.PublicId, s.TargetId())
+			}
 		})
 	}
 	t.Run("add-existing", func(t *testing.T) {
 		assert, require := assert.New(t), require.New(t)
 
-		projTarget := target.TestTcpTarget(t, conn, staticProj.PublicId, "add-existing")
+		projTarget := tcp.TestTarget(t, conn, staticProj.PublicId, "add-existing")
 		_, _, gotCredSources, err := repo.AddTargetCredentialSources(context.Background(), projTarget.PublicId, 1, []string{lib1.PublicId})
 		require.NoError(err)
 		assert.Len(gotCredSources, 1)
@@ -161,10 +158,10 @@ func TestRepository_AddTargetCredentialSources(t *testing.T) {
 		assert.True(errors.Match(errors.T(errors.NotUnique), err))
 
 		// Previous transactions should have been rolled back and only lib1 should be associated
-		gotCredSources, err = target.FetchCredentialSources(context.Background(), rw, projTarget.PublicId)
+		_, _, lookupCredSources, err := repo.LookupTarget(context.Background(), projTarget.PublicId)
 		require.NoError(err)
-		assert.Len(gotCredSources, 1)
-		assert.Equal(lib1.PublicId, gotCredSources[0].Id())
+		assert.Len(lookupCredSources, 1)
+		assert.Equal(lib1.PublicId, lookupCredSources[0].Id())
 	})
 	t.Run("target-not-found", func(t *testing.T) {
 		assert, require := assert.New(t), require.New(t)
@@ -230,7 +227,7 @@ func TestRepository_DeleteTargetCredentialSources(t *testing.T) {
 		{
 			name: "not-found",
 			args: args{
-				targetIdOverride: func() *string { id := target.TestId(t); return &id }(),
+				targetIdOverride: func() *string { id := tcp.TestId(t); return &id }(),
 				createCnt:        5,
 				deleteCnt:        5,
 			},
@@ -278,7 +275,7 @@ func TestRepository_DeleteTargetCredentialSources(t *testing.T) {
 			assert, require := assert.New(t), require.New(t)
 			cs := css[i]
 
-			target := target.TestTcpTarget(t, conn, proj.PublicId, tt.name)
+			target := tcp.TestTarget(t, conn, proj.PublicId, tt.name)
 
 			clIds := make([]string, 0, tt.args.createCnt)
 			if tt.args.createCnt > 0 {
@@ -335,7 +332,7 @@ func TestRepository_DeleteTargetCredentialSources(t *testing.T) {
 		lib2 := libs[1]
 		lib3 := libs[2]
 
-		projTarget := target.TestTcpTarget(t, conn, proj.PublicId, "add-existing")
+		projTarget := tcp.TestTarget(t, conn, proj.PublicId, "add-existing")
 		_, _, gotCredSources, err := repo.AddTargetCredentialSources(context.Background(), projTarget.PublicId, 1, []string{lib1.PublicId, lib2.PublicId})
 		require.NoError(err)
 		assert.Len(gotCredSources, 2)
@@ -353,9 +350,9 @@ func TestRepository_DeleteTargetCredentialSources(t *testing.T) {
 		assert.Equal(0, delCount)
 
 		// Previous transactions should have been rolled back and only lib1 should be associated
-		gotCredSources, err = target.FetchCredentialSources(context.Background(), rw, projTarget.PublicId)
+		_, _, lookupCredSources, err := repo.LookupTarget(context.Background(), projTarget.PublicId)
 		require.NoError(err)
-		assert.Len(gotCredSources, 2)
+		assert.Len(lookupCredSources, 2)
 	})
 }
 
@@ -471,7 +468,7 @@ func TestRepository_SetTargetCredentialSources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert, require := assert.New(t), require.New(t)
 
-			tar := target.TestTcpTarget(t, conn, proj.PublicId, tt.name)
+			tar := tcp.TestTarget(t, conn, proj.PublicId, tt.name)
 
 			var origCredSources []target.CredentialSource
 			if tt.setup != nil {

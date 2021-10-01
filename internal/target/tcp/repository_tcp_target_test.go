@@ -1,4 +1,4 @@
-package target_test
+package tcp_test
 
 import (
 	"context"
@@ -14,12 +14,13 @@ import (
 	"github.com/hashicorp/boundary/internal/kms"
 	"github.com/hashicorp/boundary/internal/oplog"
 	"github.com/hashicorp/boundary/internal/target"
+	"github.com/hashicorp/boundary/internal/target/tcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
-func TestRepository_CreateTcpTarget(t *testing.T) {
+func TestRepository_CreateTarget(t *testing.T) {
 	t.Parallel()
 	conn, _ := db.TestSetup(t, "postgres")
 	rw := db.New(conn)
@@ -44,7 +45,7 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 	}
 
 	type args struct {
-		target *target.TcpTarget
+		target *tcp.Target
 		opt    []target.Option
 	}
 	tests := []struct {
@@ -58,8 +59,8 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 		{
 			name: "valid-org",
 			args: args{
-				target: func() *target.TcpTarget {
-					target, err := target.NewTcpTarget(proj.PublicId,
+				target: func() *tcp.Target {
+					target, err := tcp.NewTarget(proj.PublicId,
 						target.WithName("valid-org"),
 						target.WithDescription("valid-org"),
 						target.WithDefaultPort(uint32(22)))
@@ -74,8 +75,8 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 		{
 			name: "valid-org-with-host-sets",
 			args: args{
-				target: func() *target.TcpTarget {
-					target, err := target.NewTcpTarget(proj.PublicId,
+				target: func() *tcp.Target {
+					target, err := tcp.NewTarget(proj.PublicId,
 						target.WithName("valid-org-with-host-sets"),
 						target.WithDescription("valid-org"),
 						target.WithDefaultPort(uint32(22)))
@@ -91,8 +92,8 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 		{
 			name: "valid-org-with-cred-libs",
 			args: args{
-				target: func() *target.TcpTarget {
-					target, err := target.NewTcpTarget(proj.PublicId,
+				target: func() *tcp.Target {
+					target, err := tcp.NewTarget(proj.PublicId,
 						target.WithName("valid-org-with-cred-libs"),
 						target.WithDescription("valid-org"),
 						target.WithDefaultPort(uint32(22)))
@@ -108,8 +109,8 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 		{
 			name: "valid-org-with-cred-libs-and-host-sets",
 			args: args{
-				target: func() *target.TcpTarget {
-					target, err := target.NewTcpTarget(proj.PublicId,
+				target: func() *tcp.Target {
+					target, err := tcp.NewTarget(proj.PublicId,
 						target.WithName("valid-org-with-cred-libs-and-host-sets"),
 						target.WithDescription("valid-org"),
 						target.WithDefaultPort(uint32(22)))
@@ -136,8 +137,8 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 		{
 			name: "nil-target-store",
 			args: args{
-				target: func() *target.TcpTarget {
-					target := &target.TcpTarget{}
+				target: func() *tcp.Target {
+					target := &tcp.Target{}
 					return target
 				}(),
 			},
@@ -147,15 +148,15 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 		{
 			name: "public-id-not-empty",
 			args: args{
-				target: func() *target.TcpTarget {
-					tar, err := target.NewTcpTarget(
+				target: func() *tcp.Target {
+					tar, err := tcp.NewTarget(
 						proj.PublicId,
 						target.WithName("valid-org"),
 						target.WithDescription("valid-org"),
 						target.WithDefaultPort(uint32(22)),
 					)
 					require.NoError(t, err)
-					id, err := target.NewTcpTargetId()
+					id, err := tcp.RH.NewTargetId()
 					require.NoError(t, err)
 					tar.PublicId = id
 					return tar
@@ -167,8 +168,8 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 		{
 			name: "empty-scope-id",
 			args: args{
-				target: func() *target.TcpTarget {
-					tar, err := target.NewTcpTarget(
+				target: func() *tcp.Target {
+					tar, err := tcp.NewTarget(
 						proj.PublicId,
 						target.WithName("empty-scope-id"),
 					)
@@ -184,7 +185,7 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert, require := assert.New(t), require.New(t)
-			tar, hostSources, credSources, err := repo.CreateTcpTarget(context.Background(), tt.args.target, tt.args.opt...)
+			tar, hostSources, credSources, err := repo.CreateTarget(context.Background(), tt.args.target, tt.args.opt...)
 			if tt.wantErr {
 				assert.Error(err)
 				assert.Nil(tar)
@@ -207,7 +208,7 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 
 			foundTarget, foundHostSources, foundCredLibs, err := repo.LookupTarget(context.Background(), tar.GetPublicId())
 			assert.NoError(err)
-			assert.True(proto.Equal(tar.(*target.TcpTarget), foundTarget.(*target.TcpTarget)))
+			assert.True(proto.Equal(tar.(*tcp.Target), foundTarget.(*tcp.Target)))
 			assert.Equal(hostSources, foundHostSources)
 			assert.Equal(credSources, foundCredLibs)
 
@@ -218,7 +219,7 @@ func TestRepository_CreateTcpTarget(t *testing.T) {
 			// test to make sure that the oplog entry for a target host sets
 			// create exist because the db.TestVerifyOplog doesn't really
 			// support that level of testing and the previous call to
-			// CreateTcpTarget would create an oplog entry for the
+			// CreateTarget would create an oplog entry for the
 			// create on the target even if no host sets were added.   Once
 			// TestVerifyOplog supports the appropriate granularity, we should
 			// add an appropriate assert.
@@ -236,7 +237,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 
 	repo, err := target.NewRepository(rw, rw, testKms)
 	require.NoError(t, err)
-	id := target.TestId(t)
+	id := tcp.TestId(t)
 
 	iamRepo := iam.TestRepo(t, conn, wrapper)
 	_, proj := iam.TestScopes(t, iamRepo)
@@ -297,7 +298,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			newScopeId:     proj.PublicId,
 			wantErr:        true,
 			wantRowsUpdate: 0,
-			wantErrMsg:     "target.(Repository).UpdateTcpTarget: failed for 1: db.DoTx: target.(Repository).UpdateTcpTarget: target.(Repository).update: db.DoTx: target.(Repository).update: db.Update: db.lookupAfterWrite: db.LookupById: record not found, search issue: error #1100",
+			wantErrMsg:     "target.(Repository).UpdateTarget: failed for 1: db.DoTx: target.(Repository).UpdateTarget: target.(Repository).update: db.DoTx: target.(Repository).update: db.Update: db.lookupAfterWrite: db.LookupById: record not found, search issue: error #1100",
 			wantIsError:    errors.RecordNotFound,
 		},
 		{
@@ -311,7 +312,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			newName:        "null-name" + id,
 			wantErr:        true,
 			wantRowsUpdate: 0,
-			wantErrMsg:     "db.DoTx: target.(Repository).UpdateTcpTarget: target.(Repository).update: db.DoTx: target.(Repository).update: db.Update: name must not be empty: not null constraint violated: integrity violation: error #1001",
+			wantErrMsg:     "db.DoTx: target.(Repository).UpdateTarget: target.(Repository).update: db.DoTx: target.(Repository).update: db.Update: name must not be empty: not null constraint violated: integrity violation: error #1001",
 		},
 		{
 			name: "null-description",
@@ -335,7 +336,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			newScopeId:     proj.PublicId,
 			wantErr:        true,
 			wantRowsUpdate: 0,
-			wantErrMsg:     "target.(Repository).UpdateTcpTarget: empty field mask: parameter violation: error #104",
+			wantErrMsg:     "target.(Repository).UpdateTarget: empty field mask: parameter violation: error #104",
 			wantIsError:    errors.EmptyFieldMask,
 		},
 		{
@@ -348,7 +349,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			newScopeId:     proj.PublicId,
 			wantErr:        true,
 			wantRowsUpdate: 0,
-			wantErrMsg:     "target.(Repository).UpdateTcpTarget: empty field mask: parameter violation: error #104",
+			wantErrMsg:     "target.(Repository).UpdateTarget: empty field mask: parameter violation: error #104",
 			wantIsError:    errors.EmptyFieldMask,
 		},
 		{
@@ -361,7 +362,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			newScopeId:     proj.PublicId,
 			wantErr:        true,
 			wantRowsUpdate: 0,
-			wantErrMsg:     "target.(Repository).UpdateTcpTarget: invalid field mask: CreateTime: parameter violation: error #103",
+			wantErrMsg:     "target.(Repository).UpdateTarget: invalid field mask: CreateTime: parameter violation: error #103",
 			wantIsError:    errors.InvalidFieldMask,
 		},
 		{
@@ -374,7 +375,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			newScopeId:     proj.PublicId,
 			wantErr:        true,
 			wantRowsUpdate: 0,
-			wantErrMsg:     "target.(Repository).UpdateTcpTarget: invalid field mask: Alice: parameter violation: error #103",
+			wantErrMsg:     "target.(Repository).UpdateTarget: invalid field mask: Alice: parameter violation: error #103",
 			wantIsError:    errors.InvalidFieldMask,
 		},
 		{
@@ -387,7 +388,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			},
 			newScopeId:     proj.PublicId,
 			wantErr:        true,
-			wantErrMsg:     "target.(Repository).UpdateTcpTarget: missing target public id: parameter violation: error #100",
+			wantErrMsg:     "tcp.(repository).ValidateUpdate: missing target public id: parameter violation: error #100",
 			wantIsError:    errors.InvalidParameter,
 			wantRowsUpdate: 0,
 		},
@@ -399,7 +400,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			},
 			newScopeId:  proj.PublicId,
 			wantErr:     true,
-			wantErrMsg:  "target.(Repository).UpdateTcpTarget: empty field mask: parameter violation: error #104",
+			wantErrMsg:  "target.(Repository).UpdateTarget: empty field mask: parameter violation: error #104",
 			wantIsError: errors.EmptyFieldMask,
 		},
 		{
@@ -433,7 +434,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			cs := css[i]
 			require, assert := require.New(t), assert.New(t)
 			if tt.wantDup {
-				_ = target.TestTcpTarget(t, conn, proj.PublicId, tt.args.name)
+				_ = tcp.TestTarget(t, conn, proj.PublicId, tt.args.name)
 			}
 
 			testCats := static.TestCatalogs(t, conn, proj.PublicId, 1)
@@ -452,10 +453,10 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			tt.newTargetOpts = append(tt.newTargetOpts, target.WithHostSources(testHostSetIds), target.WithCredentialSources(testClIds))
 			name := tt.newName
 			if name == "" {
-				name = target.TestId(t)
+				name = tcp.TestId(t)
 			}
-			tar := target.TestTcpTarget(t, conn, tt.newScopeId, name, tt.newTargetOpts...)
-			updateTarget := target.NewTestTcpTarget(
+			tar := tcp.TestTarget(t, conn, tt.newScopeId, name, tt.newTargetOpts...)
+			updateTarget := tcp.NewTestTarget(
 				tt.args.ScopeId,
 				target.WithName(tt.args.name),
 				target.WithDescription(tt.args.description),
@@ -466,7 +467,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 				updateTarget.PublicId = *tt.args.PublicId
 			}
 
-			targetAfterUpdate, hostSources, credSources, updatedRows, err := repo.UpdateTcpTarget(context.Background(), updateTarget, tar.Version, tt.args.fieldMaskPaths, tt.args.opt...)
+			targetAfterUpdate, hostSources, credSources, updatedRows, err := repo.UpdateTarget(context.Background(), updateTarget, tar.Version, tt.args.fieldMaskPaths, tt.args.opt...)
 			if tt.wantErr {
 				assert.Error(err)
 				assert.True(errors.Match(errors.T(tt.wantIsError), err))
@@ -495,13 +496,13 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 
 			switch tt.name {
 			case "valid-no-op":
-				assert.Equal(tar.UpdateTime, targetAfterUpdate.(*target.TcpTarget).UpdateTime)
+				assert.Equal(tar.UpdateTime, targetAfterUpdate.(*tcp.Target).UpdateTime)
 			default:
-				assert.NotEqual(tar.UpdateTime, targetAfterUpdate.(*target.TcpTarget).UpdateTime)
+				assert.NotEqual(tar.UpdateTime, targetAfterUpdate.(*tcp.Target).UpdateTime)
 			}
 			foundTarget, _, _, err := repo.LookupTarget(context.Background(), tar.PublicId)
 			assert.NoError(err)
-			assert.True(proto.Equal(targetAfterUpdate.((*target.TcpTarget)), foundTarget.((*target.TcpTarget))))
+			assert.True(proto.Equal(targetAfterUpdate.((*tcp.Target)), foundTarget.((*tcp.Target))))
 			underlyingDB, err := conn.SqlDB(ctx)
 			require.NoError(err)
 			dbassert := dbassert.New(t, conn.DB())

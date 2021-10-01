@@ -13,7 +13,7 @@ import (
 
 // Cloneable provides a cloning interface
 type Cloneable interface {
-	Clone() interface{}
+	Clone() Target
 }
 
 // Repository is the target database repository

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	targetPrefix = "ttcp"
+	TargetPrefix = "ttcp"
 )
 
 type repository struct{}
@@ -30,6 +30,10 @@ func (r *repository) ValidateCreate(ctx context.Context, t target.Target) error 
 	tt, ok := t.(*Target)
 	if !ok {
 		return errors.New(ctx, errors.InvalidParameter, op, "target is not a tcp.Target")
+	}
+
+	if tt == nil {
+		return errors.New(ctx, errors.InvalidParameter, op, "missing target")
 	}
 
 	if tt.Target == nil {
@@ -66,7 +70,7 @@ func (r *repository) ValidateUpdate(ctx context.Context, t target.Target) error 
 
 func (r *repository) NewTargetId() (string, error) {
 	const op = "tcp.(repository).NewTargetId"
-	id, err := db.NewPublicId(targetPrefix)
+	id, err := db.NewPublicId(TargetPrefix)
 	if err != nil {
 		return "", errors.WrapDeprecated(err, op)
 	}

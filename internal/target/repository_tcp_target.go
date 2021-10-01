@@ -138,7 +138,7 @@ func (r *Repository) UpdateTarget(ctx context.Context, target Target, version ui
 		return nil, nil, nil, db.NoRowsAffected, errors.New(ctx, errors.InvalidParameter, op, fmt.Sprintf("unsupported target type %s", target.GetType()))
 	}
 
-	if err := rh.ValidateCreate(ctx, target); err != nil {
+	if err := rh.ValidateUpdate(ctx, target); err != nil {
 		return nil, nil, nil, db.NoRowsAffected, err
 	}
 
