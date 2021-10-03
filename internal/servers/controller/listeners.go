@@ -12,12 +12,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/boundary/globals"
 	"github.com/hashicorp/boundary/internal/cmd/base"
 	pbs "github.com/hashicorp/boundary/internal/gen/controller/servers/services"
 	"github.com/hashicorp/boundary/internal/libs/alpnmux"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/workers"
 	"github.com/hashicorp/go-multierror"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 func (c *Controller) startListeners() error {
@@ -134,6 +136,11 @@ func (c *Controller) startListeners() error {
 		return nil
 	}
 
+	c.gatewayListener, _ = bufconnListener()
+	servers = append(servers, func() {
+		go c.gatewayServer.Serve(c.gatewayListener)
+	})
+
 	for _, ln := range c.conf.Listeners {
 		var err error
 		for _, purpose := range ln.Config.Purpose {
@@ -184,6 +191,21 @@ func (c *Controller) stopListeners(serversOnly bool) error {
 			}
 		}()
 	}
+
+	if c.gatewayServer != nil {
+		serverWg.Add(1)
+		go func() {
+			defer serverWg.Done()
+			shutdownKill, shutdownKillCancel := context.WithTimeout(c.baseContext, globals.DefaultMaxRequestDuration)
+			defer shutdownKillCancel()
+			go func() {
+				<-shutdownKill.Done()
+				c.gatewayServer.Stop()
+			}()
+			c.gatewayServer.GracefulStop()
+		}()
+	}
+
 	serverWg.Wait()
 	if serversOnly {
 		return nil
@@ -202,4 +224,27 @@ func (c *Controller) stopListeners(serversOnly bool) error {
 		}
 	}
 	return retErr.ErrorOrNil()
+}
+
+// bufconnListener will create an in-memory listener
+func bufconnListener() (gatewayListener, string) {
+	buffer := 1024 * 1024 // seems like a reasonable size for the ring buffer... happy to discuss
+	return bufconn.Listen(buffer), ""
+}
+
+const gatewayTarget = ""
+
+type gatewayListener interface {
+	net.Listener
+	Dial() (net.Conn, error)
+}
+
+func (c *Controller) gatewayDialOptions() []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithInsecure(),
+		// grpc.WithBlock(),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return c.gatewayListener.Dial()
+		}),
+	}
 }

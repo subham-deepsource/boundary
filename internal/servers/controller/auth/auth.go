@@ -11,7 +11,9 @@ import (
 	"github.com/hashicorp/boundary/api/recovery"
 	"github.com/hashicorp/boundary/globals"
 	"github.com/hashicorp/boundary/internal/errors"
+	authpb "github.com/hashicorp/boundary/internal/gen/controller/auth"
 	"github.com/hashicorp/boundary/internal/gen/controller/tokens"
+
 	"github.com/hashicorp/boundary/internal/kms"
 	"github.com/hashicorp/boundary/internal/observability/event"
 	"github.com/hashicorp/boundary/internal/perms"
@@ -65,6 +67,39 @@ type RequestInfo struct {
 	userIdOverride       string
 	DisableAuthzFailures bool
 	DisableAuthEntirely  bool
+}
+
+// ToPb will convert a RequestInfo to a protobuf version that can be serialized
+// across the wire to the grpc-gateway server.
+func (r *RequestInfo) ToPb() *authpb.RequestInfo {
+	return &authpb.RequestInfo{
+		Path:                 r.Path,
+		Method:               r.Method,
+		PublicId:             r.PublicId,
+		EncryptedToken:       r.EncryptedToken,
+		Token:                r.Token,
+		TokenFormat:          uint32(r.TokenFormat),
+		ScopeIdOverride:      r.scopeIdOverride,
+		UserIdOverride:       r.userIdOverride,
+		DisableAuthzFailures: r.DisableAuthzFailures,
+		DisableAuthEntirely:  r.DisableAuthEntirely,
+	}
+}
+
+// ToStruct will convert a RequestInfo from a protobuf version to a go struct
+func ToStruct(rpb *authpb.RequestInfo) RequestInfo {
+	return RequestInfo{
+		Path:                 rpb.Path,
+		Method:               rpb.Method,
+		PublicId:             rpb.PublicId,
+		EncryptedToken:       rpb.EncryptedToken,
+		Token:                rpb.Token,
+		TokenFormat:          TokenFormat(rpb.TokenFormat),
+		scopeIdOverride:      rpb.ScopeIdOverride,
+		userIdOverride:       rpb.UserIdOverride,
+		DisableAuthzFailures: rpb.DisableAuthzFailures,
+		DisableAuthEntirely:  rpb.DisableAuthEntirely,
+	}
 }
 
 type VerifyResults struct {

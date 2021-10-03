@@ -23,25 +23,27 @@ import (
 	"github.com/hashicorp/boundary/internal/servers/controller/auth"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/accounts"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/authmethods"
+	"github.com/hashicorp/boundary/internal/servers/controller/handlers/authtokens"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/credentiallibraries"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/credentialstores"
+	"github.com/hashicorp/boundary/internal/servers/controller/handlers/groups"
+	"github.com/hashicorp/boundary/internal/servers/controller/handlers/host_catalogs"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/host_sets"
+	"github.com/hashicorp/boundary/internal/servers/controller/handlers/hosts"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/managed_groups"
+	"github.com/hashicorp/boundary/internal/servers/controller/handlers/roles"
+	"github.com/hashicorp/boundary/internal/servers/controller/handlers/scopes"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/sessions"
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers/targets"
+	"github.com/hashicorp/boundary/internal/servers/controller/handlers/users"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/hashicorp/go-secure-stdlib/listenerutil"
 	"github.com/hashicorp/go-secure-stdlib/strutil"
+	"github.com/mr-tron/base58"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hashicorp/boundary/internal/servers/controller/handlers"
-	"github.com/hashicorp/boundary/internal/servers/controller/handlers/authtokens"
-	"github.com/hashicorp/boundary/internal/servers/controller/handlers/groups"
-	"github.com/hashicorp/boundary/internal/servers/controller/handlers/host_catalogs"
-	"github.com/hashicorp/boundary/internal/servers/controller/handlers/hosts"
-	"github.com/hashicorp/boundary/internal/servers/controller/handlers/roles"
-	"github.com/hashicorp/boundary/internal/servers/controller/handlers/scopes"
-	"github.com/hashicorp/boundary/internal/servers/controller/handlers/users"
 )
 
 type HandlerProperties struct {
@@ -85,31 +87,38 @@ func handleGrpcGateway(c *Controller, props HandlerProperties) (http.Handler, er
 		runtime.WithErrorHandler(handlers.ErrorHandler()),
 		runtime.WithForwardResponseOption(handlers.OutgoingInterceptor),
 	)
+
+	dialOptions := c.gatewayDialOptions()
+
 	hcs, err := host_catalogs.NewService(c.StaticHostRepoFn, c.IamRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create host catalog handler service: %w", err)
 	}
-	if err := services.RegisterHostCatalogServiceHandlerServer(ctx, mux, hcs); err != nil {
+	services.RegisterHostCatalogServiceServer(c.gatewayServer, hcs)
+	if err := services.RegisterHostCatalogServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register host catalog service handler: %w", err)
 	}
 	hss, err := host_sets.NewService(c.StaticHostRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create host set handler service: %w", err)
 	}
-	if err := services.RegisterHostSetServiceHandlerServer(ctx, mux, hss); err != nil {
+	services.RegisterHostSetServiceServer(c.gatewayServer, hss)
+	if err := services.RegisterHostSetServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register host set service handler: %w", err)
 	}
 	hs, err := hosts.NewService(c.StaticHostRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create host handler service: %w", err)
 	}
-	if err := services.RegisterHostServiceHandlerServer(ctx, mux, hs); err != nil {
+	services.RegisterHostServiceServer(c.gatewayServer, hs)
+	if err := services.RegisterHostServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register host service handler: %w", err)
 	}
 	accts, err := accounts.NewService(c.PasswordAuthRepoFn, c.OidcRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create account handler service: %w", err)
 	}
+	services.RegisterAccountServiceServer(c.gatewayServer, accts)
 	if err := services.RegisterAccountServiceHandlerServer(ctx, mux, accts); err != nil {
 		return nil, fmt.Errorf("failed to register account service handler: %w", err)
 	}
@@ -117,13 +126,15 @@ func handleGrpcGateway(c *Controller, props HandlerProperties) (http.Handler, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auth method handler service: %w", err)
 	}
-	if err := services.RegisterAuthMethodServiceHandlerServer(ctx, mux, authMethods); err != nil {
+	services.RegisterAuthMethodServiceServer(c.gatewayServer, authMethods)
+	if err := services.RegisterAuthMethodServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register auth method service handler: %w", err)
 	}
 	authtoks, err := authtokens.NewService(c.AuthTokenRepoFn, c.IamRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auth token handler service: %w", err)
 	}
+	services.RegisterAuthTokenServiceServer(c.gatewayServer, authtoks)
 	if err := services.RegisterAuthTokenServiceHandlerServer(ctx, mux, authtoks); err != nil {
 		return nil, fmt.Errorf("failed to register auth token service handler: %w", err)
 	}
@@ -131,14 +142,16 @@ func handleGrpcGateway(c *Controller, props HandlerProperties) (http.Handler, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scope handler service: %w", err)
 	}
-	if err := services.RegisterScopeServiceHandlerServer(ctx, mux, os); err != nil {
+	services.RegisterScopeServiceServer(c.gatewayServer, os)
+	if err := services.RegisterScopeServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register scope service handler: %w", err)
 	}
 	us, err := users.NewService(c.IamRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user handler service: %w", err)
 	}
-	if err := services.RegisterUserServiceHandlerServer(ctx, mux, us); err != nil {
+	services.RegisterUserServiceServer(c.gatewayServer, us)
+	if err := services.RegisterUserServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register user service handler: %w", err)
 	}
 	ts, err := targets.NewService(
@@ -152,6 +165,7 @@ func handleGrpcGateway(c *Controller, props HandlerProperties) (http.Handler, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to create target handler service: %w", err)
 	}
+	services.RegisterTargetServiceServer(c.gatewayServer, ts)
 	if err := services.RegisterTargetServiceHandlerServer(ctx, mux, ts); err != nil {
 		return nil, fmt.Errorf("failed to register target service handler: %w", err)
 	}
@@ -159,42 +173,48 @@ func handleGrpcGateway(c *Controller, props HandlerProperties) (http.Handler, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to create group handler service: %w", err)
 	}
-	if err := services.RegisterGroupServiceHandlerServer(ctx, mux, gs); err != nil {
+	services.RegisterGroupServiceServer(c.gatewayServer, gs)
+	if err := services.RegisterGroupServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register group service handler: %w", err)
 	}
 	rs, err := roles.NewService(c.IamRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create role handler service: %w", err)
 	}
-	if err := services.RegisterRoleServiceHandlerServer(ctx, mux, rs); err != nil {
+	services.RegisterRoleServiceServer(c.gatewayServer, rs)
+	if err := services.RegisterRoleServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register role service handler: %w", err)
 	}
 	ss, err := sessions.NewService(c.SessionRepoFn, c.IamRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session handler service: %w", err)
 	}
-	if err := services.RegisterSessionServiceHandlerServer(ctx, mux, ss); err != nil {
+	services.RegisterSessionServiceServer(c.gatewayServer, ss)
+	if err := services.RegisterSessionServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register session service handler: %w", err)
 	}
 	mgs, err := managed_groups.NewService(c.OidcRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create managed groups handler service: %w", err)
 	}
-	if err := services.RegisterManagedGroupServiceHandlerServer(ctx, mux, mgs); err != nil {
+	services.RegisterManagedGroupServiceServer(c.gatewayServer, mgs)
+	if err := services.RegisterManagedGroupServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register managed groups service handler: %w", err)
 	}
 	cs, err := credentialstores.NewService(c.VaultCredentialRepoFn, c.IamRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create credential store handler service: %w", err)
 	}
-	if err := services.RegisterCredentialStoreServiceHandlerServer(ctx, mux, cs); err != nil {
+	services.RegisterCredentialStoreServiceServer(c.gatewayServer, cs)
+	if err := services.RegisterCredentialStoreServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register credential store service handler: %w", err)
 	}
 	cl, err := credentiallibraries.NewService(c.VaultCredentialRepoFn, c.IamRepoFn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create credential library handler service: %w", err)
 	}
-	if err := services.RegisterCredentialLibraryServiceHandlerServer(ctx, mux, cl); err != nil {
+	services.RegisterCredentialLibraryServiceServer(c.gatewayServer, cl)
+	if err := services.RegisterCredentialLibraryServiceHandlerFromEndpoint(ctx, mux, gatewayTarget, dialOptions); err != nil {
 		return nil, fmt.Errorf("failed to register credential library service handler: %w", err)
 	}
 
@@ -259,6 +279,23 @@ func wrapHandlerWithCommonFuncs(h http.Handler, c *Controller, props HandlerProp
 
 		// Set the context back on the request
 		r = r.WithContext(ctx)
+
+		// Serialize the request info to send it across the wire to the
+		// grpc-gateway via an http header
+		pb := requestInfo.ToPb()
+		if pb == nil {
+			panic("nil pb")
+		}
+		marshalledRequestInfo, err := proto.Marshal(pb)
+		if err != nil {
+			event.WriteError(ctx, op, err, event.WithInfoMsg("error marshaling request info"))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		// Use the default grpc-gateway mapping rule to pass the request info as
+		// metadata.
+		// See: https://pkg.go.dev/github.com/grpc-ecosystem/grpc-gateway/runtime#DefaultHeaderMatcher
+		r.Header.Set("Grpc-Metadata-"+requestInfoMdKey, base58.FastBase58Encoding(marshalledRequestInfo))
 
 		h.ServeHTTP(w, r)
 	})

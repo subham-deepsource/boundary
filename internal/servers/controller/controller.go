@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/hashicorp/boundary/internal/auth/oidc"
@@ -26,6 +27,7 @@ import (
 	"github.com/hashicorp/go-secure-stdlib/mlock"
 	"github.com/patrickmn/go-cache"
 	ua "go.uber.org/atomic"
+	"google.golang.org/grpc"
 )
 
 type Controller struct {
@@ -43,6 +45,10 @@ type Controller struct {
 
 	// Used for testing and tracking worker health
 	workerStatusUpdateTimes *sync.Map
+
+	// grpc gateway server
+	gatewayServer   *grpc.Server
+	gatewayListener gatewayListener
 
 	// Repo factory methods
 	AuthTokenRepoFn       common.AuthTokenRepoFactory
@@ -155,6 +161,16 @@ func New(ctx context.Context, conf *Config) (*Controller, error) {
 		return session.NewRepository(dbase, dbase, c.kms)
 	}
 	c.workerAuthCache = cache.New(0, 0)
+
+	requestCtxInterceptor, err := requestCtxInterceptor(c)
+	if err != nil {
+		return nil, err
+	}
+	c.gatewayServer = grpc.NewServer(
+		grpc.MaxRecvMsgSize(math.MaxInt32),
+		grpc.MaxSendMsgSize(math.MaxInt32),
+		grpc.UnaryInterceptor(requestCtxInterceptor),
+	)
 
 	return c, nil
 }
