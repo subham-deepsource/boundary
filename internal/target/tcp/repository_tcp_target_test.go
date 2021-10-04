@@ -505,7 +505,7 @@ func TestRepository_UpdateTcpTarget(t *testing.T) {
 			assert.True(proto.Equal(targetAfterUpdate.((*tcp.Target)), foundTarget.((*tcp.Target))))
 			underlyingDB, err := conn.SqlDB(ctx)
 			require.NoError(err)
-			dbassert := dbassert.New(t, conn.DB())
+			dbassert := dbassert.New(t, underlyingDB)
 			if tt.args.description == "" {
 				assert.Equal(foundTarget.GetDescription(), "")
 				dbassert.IsNull(foundTarget, "description")

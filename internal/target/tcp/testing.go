@@ -8,11 +8,10 @@ import (
 	"github.com/hashicorp/boundary/internal/db"
 	"github.com/hashicorp/boundary/internal/target"
 	"github.com/hashicorp/go-uuid"
-	"github.com/jinzhu/gorm"
 	"github.com/stretchr/testify/require"
 )
 
-func TestTarget(t *testing.T, conn *gorm.DB, scopeId, name string, opt ...target.Option) *Target {
+func TestTarget(t *testing.T, conn *db.DB, scopeId, name string, opt ...target.Option) *Target {
 	t.Helper()
 	opt = append(opt, target.WithName(name))
 	opts := target.GetOpts(opt...)
