@@ -1,0 +1,20 @@
+version = 1
+
+[[analyzers]]
+name = "sql"
+enabled = true
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+[[analyzers]]
+name = "shell"
+enabled = true
+
+[[analyzers]]
+name = "go"
+enabled = true
+
+  [analyzers.meta]
+  import_root = "github.com/hashicorp/boundary"
